@@ -28,9 +28,10 @@ export default function LandingServiciosPyMEs() {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setStatus("ok");
       setForm({ name: "", email: "", company: "", industry: "", message: "" });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus("error");
-      setError(err?.message ?? "Ocurrió un error al enviar.");
+      const msg = err instanceof Error ? err.message : "Ocurrió un error al enviar.";
+      setError(msg);
     }
   };
 
