@@ -1,52 +1,87 @@
 // app/api/lead/route.ts
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // SOLO servidor
-);
+type Lead = {
+  name: string;
+  email: string;
+  company?: string | null;
+  industry?: string | null;
+  message?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  created_at?: string;
+};
 
 export async function GET() {
-  return NextResponse.json({ ok: true, msg: 'Use POST /api/lead' });
+  return NextResponse.json({ ok: true, msg: "Use POST /api/lead" });
 }
 
 export async function POST(req: Request) {
-  // Acepta JSON y también <form method="POST">
-  let name: string | null = null;
-  let email: string | null = null;
-  let utm_source: string | null = null;
-  let utm_medium: string | null = null;
-
   try {
-    const contentType = req.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const body = await req.json();
-      name = body?.name ?? null;
-      email = body?.email ?? null;
-      utm_source = body?.utm_source ?? null;
-      utm_medium = body?.utm_medium ?? null;
+    // Usa variables NO públicas en Vercel (Settings → Environment Variables → Production)
+    const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !serviceKey) {
+      return NextResponse.json(
+        { ok: false, error: "Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY" },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(url, serviceKey);
+
+    // Acepta JSON o form-data
+    const ct = req.headers.get("content-type") || "";
+    let payload: Partial<Lead> = {};
+    if (ct.includes("application/json")) {
+      payload = await req.json();
     } else {
       const fd = await req.formData();
-      name = String(fd.get('name') ?? '');
-      email = String(fd.get('email') ?? '');
-      utm_source = (fd.get('utm_source') as string) ?? null;
-      utm_medium = (fd.get('utm_medium') as string) ?? null;
+      payload = {
+        name: (fd.get("name") as string) ?? "",
+        email: (fd.get("email") as string) ?? "",
+        company: (fd.get("company") as string) || null,
+        industry: (fd.get("industry") as string) || null,
+        message: (fd.get("message") as string) || null,
+        utm_source: (fd.get("utm_source") as string) || null,
+        utm_medium: (fd.get("utm_medium") as string) || null,
+      };
     }
-  } catch {}
 
-  if (!name || !email) {
-    return NextResponse.json({ error: 'name y email son requeridos' }, { status: 400 });
+    const name = (payload.name ?? "").trim();
+    const email = (payload.email ?? "").trim();
+    if (!name || !email) {
+      return NextResponse.json(
+        { ok: false, error: "name y email son requeridos" },
+        { status: 400 }
+      );
+    }
+
+    const insertRow: Lead = {
+      name,
+      email,
+      company: payload.company ?? null,
+      industry: payload.industry ?? null,
+      message: payload.message ?? null,
+      utm_source: payload.utm_source ?? null,
+      utm_medium: payload.utm_medium ?? null,
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from("leads").insert(insertRow);
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error inesperado";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from('leads')
-    .insert({ name, email, utm_source, utm_medium })
-    .select();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data }, { status: 200 });
 }
+
 
